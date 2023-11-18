@@ -1,4 +1,8 @@
-//! https://en.wikipedia.org/wiki/Base64
+//! This is a [Base64](https://en.wikipedia.org/wiki/Base64) encoder
+//! and decoder.
+//!
+//! Use [`encode`] to encode slices of bytes and [`decode`] to decode
+//! Base64 strings back to bytes.
 
 #![warn(rust_2018_idioms)]
 #![warn(clippy::pedantic)]
@@ -84,6 +88,7 @@ static BASE64_REVERSE_LOOKUP_TABLE: phf::Map<char, u8> = phf_map! {
     '/' => 63,
 };
 
+#[must_use]
 pub fn encode(input: &[u8]) -> String {
     const CHUNK_SIZE: usize = 3;
     let mut base_64_str = String::with_capacity((input.len() * 8) / 6 + 1);
@@ -196,13 +201,8 @@ pub fn decode(input: &str) -> Result<Vec<u8>, DecodeError> {
             binary_chunks[2] = None;
         }
 
-        for binary_chunk in binary_chunks {
-            if let Some(value) = binary_chunk {
-                // this is really bad, because valid bytes are allowed
-                // to be zero as well, but works for now. Let's see if
-                // prop-test is going to catch this
-                result.push(value);
-            }
+        for binary_chunk in binary_chunks.into_iter().flatten() {
+            result.push(binary_chunk);
         }
     }
 
