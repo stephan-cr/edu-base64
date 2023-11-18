@@ -166,7 +166,7 @@ pub fn decode(input: &str) -> Result<Vec<u8>, DecodeError> {
         let mut binary_chunks: [Option<u8>; 3] = [None; 3];
         if let Some(value) = BASE64_REVERSE_LOOKUP_TABLE.get(&ch1) {
             binary_chunks[0] = Some(value << 2);
-        } else if ch1 == '=' {
+        } else if ch1 == PADDING {
             // ignore
         } else {
             // error
@@ -178,6 +178,8 @@ pub fn decode(input: &str) -> Result<Vec<u8>, DecodeError> {
         {
             binary_chunks[0] = binary_chunks[0].map(|x| x | (value2 >> 4));
             binary_chunks[1] = Some(value2 << 4);
+        } else {
+            return Err(DecodeError::InvalidCharacter(ch2.unwrap()));
         }
 
         if let Some(value3) =
@@ -185,20 +187,20 @@ pub fn decode(input: &str) -> Result<Vec<u8>, DecodeError> {
         {
             binary_chunks[1] = binary_chunks[1].map(|x| x | (value3 >> 2));
             binary_chunks[2] = Some(value3 << 6);
-        } else if ch3 == Some('=') {
+        } else if ch3 == Some(PADDING) {
             binary_chunks[1] = None;
         } else {
             return Err(DecodeError::InvalidCharacter(ch3.unwrap()));
         }
 
-        if ch4 != Some('=') {
-            if let Some(value4) =
-                BASE64_REVERSE_LOOKUP_TABLE.get(&ch4.expect("must contain a character"))
-            {
-                binary_chunks[2] = binary_chunks[2].map(|x| x | value4);
-            }
-        } else {
+        if let Some(value4) =
+            BASE64_REVERSE_LOOKUP_TABLE.get(&ch4.expect("must contain a character"))
+        {
+            binary_chunks[2] = binary_chunks[2].map(|x| x | value4);
+        } else if ch4 == Some(PADDING) {
             binary_chunks[2] = None;
+        } else {
+            return Err(DecodeError::InvalidCharacter(ch4.unwrap()));
         }
 
         for binary_chunk in binary_chunks.into_iter().flatten() {
