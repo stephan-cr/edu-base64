@@ -10,7 +10,7 @@
 use core::fmt;
 use std::error::Error;
 
-use itertools::Itertools;
+use itertools::{enumerate, Itertools};
 use phf::phf_map;
 
 const BASE64_LOOKUP_TABLE: [char; 64] = [
@@ -151,8 +151,10 @@ impl fmt::Display for DecodeError {
 impl Error for DecodeError {}
 
 pub fn decode(input: &str) -> Result<Vec<u8>, DecodeError> {
+    const CHUNK_SIZE: usize = 4;
     let mut result = Vec::new();
-    for mut chunk in &input.chars().chunks(4) {
+    let number_of_chunks = input.chars().count() / CHUNK_SIZE;
+    for (chunk_index, mut chunk) in enumerate(&input.chars().chunks(CHUNK_SIZE)) {
         let ch1: char = chunk
             .next()
             .expect("a chunk must at least contain one character");
@@ -166,8 +168,6 @@ pub fn decode(input: &str) -> Result<Vec<u8>, DecodeError> {
         let mut binary_chunks: [Option<u8>; 3] = [None; 3];
         if let Some(value) = BASE64_REVERSE_LOOKUP_TABLE.get(&ch1) {
             binary_chunks[0] = Some(value << 2);
-        } else if ch1 == PADDING {
-            // ignore
         } else {
             // error
             return Err(DecodeError::InvalidCharacter(ch1));
@@ -187,7 +187,8 @@ pub fn decode(input: &str) -> Result<Vec<u8>, DecodeError> {
         {
             binary_chunks[1] = binary_chunks[1].map(|x| x | (value3 >> 2));
             binary_chunks[2] = Some(value3 << 6);
-        } else if ch3 == Some(PADDING) {
+        } else if ch3 == Some(PADDING) && chunk_index + 1 == number_of_chunks {
+            // PADDING is only allowed in the last chunk
             binary_chunks[1] = None;
         } else {
             return Err(DecodeError::InvalidCharacter(ch3.unwrap()));
@@ -197,7 +198,8 @@ pub fn decode(input: &str) -> Result<Vec<u8>, DecodeError> {
             BASE64_REVERSE_LOOKUP_TABLE.get(&ch4.expect("must contain a character"))
         {
             binary_chunks[2] = binary_chunks[2].map(|x| x | value4);
-        } else if ch4 == Some(PADDING) {
+        } else if ch4 == Some(PADDING) && chunk_index + 1 == number_of_chunks {
+            // PADDING is only allowed in the last chunk
             binary_chunks[2] = None;
         } else {
             return Err(DecodeError::InvalidCharacter(ch4.unwrap()));
@@ -277,5 +279,20 @@ mod tests {
     fn test_decode_incomplete_chunksize_two() {
         let result = super::decode("ZnNmc2RmZDQzYWI=");
         assert_eq!(result, Ok(b"fsfsdfd43ab".to_vec()));
+    }
+
+    #[test]
+    fn test_decode_invalid_padding() {
+        let result = super::decode("=");
+        assert_eq!(result, Err(super::DecodeError::InvalidChunk));
+
+        let result = super::decode("====");
+        assert_eq!(result, Err(super::DecodeError::InvalidCharacter('=')));
+    }
+
+    #[test]
+    fn test_decode_invalid_leading_padding() {
+        let result = super::decode("AA==BBBB");
+        assert_eq!(result, Err(super::DecodeError::InvalidCharacter('=')));
     }
 }
